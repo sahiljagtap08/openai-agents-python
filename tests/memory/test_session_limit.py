@@ -2,11 +2,11 @@
 
 import tempfile
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
-from agents import Agent, RunConfig, SQLiteSession
+from agents import Agent, RunConfig, Runner, SQLiteSession
 from agents.items import TResponseInputItem
 from agents.memory import SessionSettings
 from agents.testing import ScriptedModel
@@ -233,3 +233,57 @@ async def test_session_limit_larger_than_history(runner_method):
         assert last_input[2].get("content") == "Message 2"
 
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_compaction_wrapper_exposes_underlying_session_settings():
+    """Wrapping a session in OpenAIResponsesCompactionSession must not hide its limit.
+
+    The runner reads ``session.session_settings`` to decide how many items to load and
+    to prune orphaned tool outputs at the truncation boundary. A wrapper that returns
+    ``None`` makes the runner load the full history and forward the orphan to the model.
+    """
+    from agents.memory import OpenAIResponsesCompactionSession
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        store = SQLiteSession(
+            "wrapped", Path(temp_dir) / "wrapped.db", session_settings=SessionSettings(limit=2)
+        )
+        session = OpenAIResponsesCompactionSession(
+            session_id="wrapped",
+            underlying_session=store,
+            client=cast(Any, object()),
+            should_trigger_compaction=lambda _context: False,
+        )
+        assert session.session_settings == SessionSettings(limit=2)
+
+        session.session_settings = SessionSettings(limit=3)
+        assert store.session_settings == SessionSettings(limit=3)
+        session.session_settings = SessionSettings(limit=2)
+
+        await store.add_items(
+            [
+                {"role": "user", "content": "first"},
+                {
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "lookup",
+                    "arguments": "{}",
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": "result",
+                },
+                {"role": "assistant", "content": "Reply 1"},
+            ]
+        )
+
+        model = ScriptedModel()
+        model.enqueue([get_text_message("Reply 2")])
+        agent = Agent(name="test", model=model)
+        await Runner.run(agent, "second", session=session)
+
+        turn = model.calls[0]
+        assert not any(item.get("type") == "function_call_output" for item in turn.input)
+        assert [item.get("content") for item in turn.input] == ["Reply 1", "second"]

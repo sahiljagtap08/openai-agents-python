@@ -29,6 +29,7 @@ from .session import (
 if TYPE_CHECKING:
     from ..run_context import RunContextWrapper
     from .session import Session
+    from .session_settings import SessionSettings
 
 logger = logging.getLogger("openai-agents.openai.compaction")
 
@@ -186,6 +187,15 @@ class OpenAIResponsesCompactionSession(SessionABC, OpenAIResponsesCompactionAwar
     def _ignore_ids_for_matching(self) -> bool:
         """Preserve the wrapped store's declared item-matching policy."""
         return bool(getattr(self.underlying_session, "_ignore_ids_for_matching", False))
+
+    @property
+    def session_settings(self) -> SessionSettings | None:
+        """Expose the wrapped store's session settings so the runner applies them."""
+        return getattr(self.underlying_session, "session_settings", None)
+
+    @session_settings.setter
+    def session_settings(self, value: SessionSettings | None) -> None:
+        self.underlying_session.session_settings = value
 
     @property
     def client(self) -> AsyncOpenAI:
