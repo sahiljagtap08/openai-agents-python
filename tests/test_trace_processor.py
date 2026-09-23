@@ -1543,3 +1543,60 @@ def test_truncate_string_for_json_limit_handles_escape_heavy_input():
     assert truncated.endswith(exporter._OPENAI_TRACING_STRING_TRUNCATION_SUFFIX)
     assert exporter._value_json_size_bytes(truncated) <= max_bytes
     exporter.close()
+
+
+def test_multi_processor_shutdown_still_reaches_processors_after_deadline(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A slow first processor must not prevent later processors from shutting down.
+
+    The provider hands each processor the time left on the shared deadline. Once that
+    reaches zero the remaining processors are still called, with no time left, so they
+    can stop their worker threads and release resources instead of being skipped.
+    """
+    from agents.tracing.provider import SynchronousMultiTracingProcessor
+
+    class SlowProcessor(TracingProcessor):
+        def on_trace_start(self, trace: Trace) -> None:
+            pass
+
+        def on_trace_end(self, trace: Trace) -> None:
+            pass
+
+        def on_span_start(self, span: Span[Any]) -> None:
+            pass
+
+        def on_span_end(self, span: Span[Any]) -> None:
+            pass
+
+        def shutdown(self, timeout: float | None = None) -> None:
+            time.sleep(0.05)
+
+        def force_flush(self) -> None:
+            pass
+
+    class RecordingProcessor(SlowProcessor):
+        def __init__(self) -> None:
+            self.timeouts: list[float | None] = []
+
+        def shutdown(self, timeout: float | None = None) -> None:
+            self.timeouts.append(timeout)
+
+    class LegacyProcessor(SlowProcessor):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def shutdown(self) -> None:  # type: ignore[override]
+            self.calls += 1
+
+    timed = RecordingProcessor()
+    legacy = LegacyProcessor()
+    multi = SynchronousMultiTracingProcessor()
+    multi.set_processors([SlowProcessor(), timed, legacy])
+
+    with caplog.at_level(logging.WARNING):
+        multi.shutdown(timeout=0.01)
+
+    assert timed.timeouts == [0.0]
+    assert legacy.calls == 1
+    assert "shutdown timeout reached before processor cleanup" in caplog.text
