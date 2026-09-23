@@ -9,7 +9,7 @@ from openai._types import Body, Query
 from openai.types.responses import ResponseIncludable
 from openai.types.responses.response_create_params import ContextManagement, PromptCacheOptions
 from openai.types.shared import Reasoning
-from pydantic import Field, FiniteFloat, GetCoreSchemaHandler, TypeAdapter
+from pydantic import ConfigDict, Field, FiniteFloat, GetCoreSchemaHandler, TypeAdapter
 from pydantic.dataclasses import dataclass
 from pydantic_core import core_schema
 
@@ -51,7 +51,7 @@ class _OmitTypeAnnotation:
         )
 
 
-@dataclass
+@dataclass(config=ConfigDict(extra="forbid"))
 class MCPToolChoice:
     server_label: str
     name: str
@@ -85,7 +85,7 @@ _TRACEABLE_MODEL_SETTING_FIELDS = (
 )
 
 
-@dataclass
+@dataclass(config=ConfigDict(extra="forbid"))
 class ModelSettings:
     """Settings to use when calling an LLM.
 

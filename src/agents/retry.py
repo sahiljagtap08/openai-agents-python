@@ -6,13 +6,13 @@ from dataclasses import dataclass, field
 from inspect import isawaitable
 from typing import Any, TypeAlias
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 from .util._types import MaybeAwaitable
 
 
-@pydantic_dataclass
+@pydantic_dataclass(config=ConfigDict(extra="forbid"))
 class ModelRetryBackoffSettings:
     """Backoff configuration for runner-managed model retries."""
 
@@ -206,7 +206,7 @@ def retry_policy_retries_all_transient_errors(policy: RetryPolicy | None) -> boo
     return bool(policy is not None and getattr(policy, _RETRIES_ALL_TRANSIENT_ERRORS_ATTR, False))
 
 
-@pydantic_dataclass
+@pydantic_dataclass(config=ConfigDict(extra="forbid"))
 class ModelRetrySettings:
     """Opt-in runner-managed retry settings for model calls."""
 
