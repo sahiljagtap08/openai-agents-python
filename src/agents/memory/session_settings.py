@@ -6,6 +6,7 @@ import dataclasses
 from dataclasses import fields, replace
 from typing import Any
 
+from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 
 from .._config_coercion import (
@@ -27,7 +28,7 @@ def resolve_session_limit(
     return None
 
 
-@dataclass
+@dataclass(config=ConfigDict(extra="forbid"))
 class SessionSettings:
     """Settings for session operations.
 
