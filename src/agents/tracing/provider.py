@@ -187,10 +187,12 @@ class SynchronousMultiTracingProcessor(TracingProcessor):
             try:
                 processor_timeout = _remaining_timeout(deadline)
                 if processor_timeout is not None and processor_timeout <= 0:
+                    # Earlier processors used up the budget. Still give the remaining ones
+                    # their shutdown call with no time left, so they stop worker threads
+                    # and release resources instead of being skipped entirely.
                     logger.warning(
                         "[non-fatal] Tracing: shutdown timeout reached before processor cleanup."
                     )
-                    return
                 if processor_timeout is not None and _supports_shutdown_timeout(processor):
                     cast(Any, processor.shutdown)(timeout=processor_timeout)
                 else:
